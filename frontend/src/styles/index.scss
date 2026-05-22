@@ -1,0 +1,189 @@
+@use './variables.scss' as *;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: $bg;
+  color: $text;
+}
+
+.page-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: $shadow;
+  padding: 24px;
+}
+
+.page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.ai-banner {
+  margin-top: 24px;
+  padding: 16px 20px;
+  background: $primary-light;
+  border-radius: $radius;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: $primary;
+  font-size: 14px;
+}
+
+.tag-public {
+  background: #dcfce7;
+  color: #16a34a;
+}
+.tag-private {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.tag-friends {
+  background: #fef9c3;
+  color: #ca8a04;
+}
+
+/* —— macOS 风格弹窗 —— */
+.mac-dialog.el-dialog {
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.06);
+  padding: 0;
+
+  .el-dialog__header {
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+
+  .el-dialog__body {
+    padding: 16px 22px 8px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 20px 18px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+  }
+}
+
+.mac-dialog__chrome {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 12px;
+  background: linear-gradient(180deg, #f6f6f6 0%, #ececec 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.mac-dialog__chrome .light.red {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: #ff5f57;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.mac-dialog__title {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-right: 52px;
+}
+
+/* 系统提示层级：高于登录/业务弹窗 */
+.el-overlay.is-message-box {
+  z-index: 10000 !important;
+}
+
+.el-message {
+  z-index: 10010 !important;
+}
+
+.mac-alert-box {
+  z-index: 10001 !important;
+  border-radius: 14px !important;
+  overflow: hidden;
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.06) !important;
+  padding-bottom: 8px !important;
+  max-width: 400px;
+
+  .el-message-box__header {
+    padding: 16px 20px 8px;
+    background: linear-gradient(180deg, #f6f6f6 0%, #ececec 100%);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+
+    .el-message-box__title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1d1d1f;
+    }
+  }
+
+  .el-message-box__content {
+    padding: 20px 22px 8px;
+  }
+
+  .el-message-box__btns {
+    padding: 12px 20px 16px;
+
+    .el-button--primary {
+      background: #007aff;
+      border-color: #007aff;
+      border-radius: 8px;
+      min-width: 88px;
+      font-weight: 500;
+    }
+  }
+}
+
+.mac-alert__content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1d1d1f;
+
+  p {
+    margin: 0;
+    flex: 1;
+  }
+}
+
+.mac-alert__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.mac-toast.el-message {
+  border-radius: 12px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset !important;
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  padding: 12px 18px !important;
+
+  .el-message__content {
+    color: #1d1d1f;
+    font-weight: 500;
+  }
+}
