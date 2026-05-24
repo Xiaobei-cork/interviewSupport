@@ -1,7 +1,4 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func
-
 from app.database import get_db
 from app.api.deps import get_current_user_optional
 from app.models.user import User
@@ -14,41 +11,48 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 
 
 @router.get("/{user_id}")
-def get_profile(
+async def get_profile(
     user_id: int,
     viewer=Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = await User.aio_get_or_none(User.id == user_id)
     if not user:
         api_raise(404, "用户不存在")
 
-    interviews = (
-        db.query(InterviewRecord)
-        .filter(InterviewRecord.user_id == user_id, InterviewRecord.visibility == 1)
+    interviews = list(
+        await InterviewRecord.select()
+        .where((InterviewRecord.user == user_id) & (InterviewRecord.visibility == 1))
         .order_by(InterviewRecord.created_at.desc())
         .limit(20)
-        .all()
+        .aio_execute()
     )
 
-    favorites = []
+    favorites: list[int] = []
     if viewer:
-        favs = (
-            db.query(InterviewFavorite)
-            .filter(InterviewFavorite.user_id == viewer.id)
+        favs = list(
+            await InterviewFavorite.select()
+            .where(InterviewFavorite.user == viewer.id)
             .limit(20)
-            .all()
+            .aio_execute()
         )
         favorites = [f.interview_id for f in favs]
 
-    like_count = db.query(func.count(InterviewLike.id)).join(InterviewRecord).filter(
-        InterviewRecord.user_id == user_id
-    ).scalar() or 0
+    like_count = await (
+        InterviewLike.select()
+        .join(InterviewRecord, on=(InterviewLike.interview == InterviewRecord.id))
+        .where(InterviewRecord.user == user_id)
+        .aio_count()
+    )
 
-    friend_count = db.query(UserFriend).filter(
-        ((UserFriend.user_id == user_id) | (UserFriend.friend_id == user_id)),
-        UserFriend.status == "accepted",
-    ).count()
+    friend_count = await (
+        UserFriend.select()
+        .where(
+            ((UserFriend.user == user_id) | (UserFriend.friend == user_id))
+            & (UserFriend.status == "accepted")
+        )
+        .aio_count()
+    )
 
     return ok(
         data={
@@ -60,7 +64,7 @@ def get_profile(
             },
             "stats": {
                 "interview_count": len(interviews),
-                "like_count": like_count,
+                "like_count": like_count or 0,
                 "friend_count": friend_count,
             },
             "interviews": [

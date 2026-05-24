@@ -44,16 +44,21 @@
           <el-tooltip content="预览简历" placement="top">
             <el-button link type="primary" :icon="View" @click="preview(row)" />
           </el-tooltip>
-          <el-tooltip content="查看 AI 分析结果" placement="top">
-            <el-button
-              link
-              type="primary"
-              class="result-btn"
-              :disabled="!hasAiResult(row)"
-              @click="openAnalysisResult(row)"
-            >
-              <el-icon><DataBoard /></el-icon>
-            </el-button>
+          <el-tooltip
+            :content="hasAiResult(row) ? '查看 AI 分析结果' : '请先进行 AI 分析'"
+            placement="top"
+          >
+            <span class="result-btn-wrap">
+              <el-button
+                link
+                type="primary"
+                class="result-btn"
+                :disabled="!hasAiResult(row)"
+                @click="openAnalysisResult(row)"
+              >
+                <el-icon><DataBoard /></el-icon>
+              </el-button>
+            </span>
           </el-tooltip>
           <el-tooltip
             :content="row.ai_adopted ? '已采纳，不可重新分析' : 'AI 分析'"
@@ -87,20 +92,56 @@
       <el-button type="primary" size="small" @click="openBannerPicker">使用 AI 分析</el-button>
     </div>
 
-    <el-dialog v-model="uploadVisible" width="480px" :show-close="false" align-center>
+    <el-dialog
+      v-model="uploadVisible"
+      width="520px"
+      class="resume-upload-dialog"
+      :show-close="false"
+      align-center
+      destroy-on-close
+    >
       <template #header>
         <div class="upload-dialog-header">
           <button type="button" class="dialog-close-red" aria-label="关闭" @click="uploadVisible = false" />
           <span class="upload-dialog-title">上传简历</span>
         </div>
       </template>
-      <el-upload drag :auto-upload="false" :limit="1" accept=".pdf,.doc,.docx" :on-change="onFile">
-        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">点击或拖拽上传简历</div>
-        <template #tip><div class="el-upload__tip">支持 Word/PDF，单文件不超过 20MB</div></template>
-      </el-upload>
+      <div class="upload-dialog-body">
+        <p class="upload-lead">将简历上传到云端，即可使用 AI 分析与在线预览</p>
+        <el-upload
+          drag
+          class="resume-uploader"
+          :auto-upload="false"
+          :limit="1"
+          accept=".pdf,.doc,.docx"
+          :on-change="onFile"
+          :on-exceed="onUploadExceed"
+        >
+          <div class="upload-inner">
+            <div class="upload-icon-wrap">
+              <el-icon class="upload-main-icon"><UploadFilled /></el-icon>
+            </div>
+            <p class="upload-main-text">点击或拖拽文件到此处</p>
+            <p class="upload-sub-text">支持 PDF、Word（.doc / .docx）</p>
+          </div>
+        </el-upload>
+        <div class="upload-tags">
+          <span class="format-tag pdf">PDF</span>
+          <span class="format-tag word">Word</span>
+          <span class="size-hint">单文件不超过 20MB</span>
+        </div>
+        <p v-if="uploadFile" class="selected-file">
+          <el-icon><Document /></el-icon>
+          {{ uploadFile.name }}
+        </p>
+      </div>
       <template #footer>
-        <el-button type="primary" :loading="uploading" @click="doUpload">上传</el-button>
+        <div class="upload-dialog-footer">
+          <el-button class="btn-cancel" @click="uploadVisible = false">取消</el-button>
+          <el-button type="primary" class="btn-submit" :loading="uploading" :disabled="!uploadFile" @click="doUpload">
+            开始上传
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -149,11 +190,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useSessionRefresh } from '@/composables/useSessionRefresh'
 import { Plus, Document, UploadFilled, View, Delete, MagicStick, DataBoard } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
-import { showInfoToast } from '@/utils/message'
+import { showInfoToast, showErrorToast } from '@/utils/message'
 import { resumeApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import AiProgressDialog from '@/components/ai/AiProgressDialog.vue'
@@ -165,7 +206,11 @@ import ResumeOptimizedPreviewDialog, {
 } from '@/components/resume/ResumeOptimizedPreviewDialog.vue'
 import RecordPickerDialog, { type PickerRecord } from '@/components/common/RecordPickerDialog.vue'
 import { showMacToast } from '@/utils/macMessage'
-import { parseResumeAiAnalysis, hasResumeAiAnalysis } from '@/utils/resumeAnalysis'
+import {
+  parseResumeAiAnalysis,
+  hasResumeAiAnalysis,
+  normalizeResumeAnalysisResult,
+} from '@/utils/resumeAnalysis'
 
 const store = useUserStore()
 const list = ref<Record<string, unknown>[]>([])
@@ -253,11 +298,16 @@ function formatTime(t: string) {
 
 function openUpload() {
   if (!store.requireLogin()) return
+  uploadFile.value = null
   uploadVisible.value = true
 }
 
 function onFile(f: { raw: File }) {
   uploadFile.value = f.raw
+}
+
+function onUploadExceed() {
+  showInfoToast('每次仅可上传一个文件，请先移除已选文件')
 }
 
 async function doUpload() {
@@ -321,18 +371,28 @@ function hasAiResult(row: Record<string, unknown>) {
   return hasResumeAiAnalysis(row)
 }
 
-function openAnalysisResult(row: Record<string, unknown>) {
+async function openAnalysisResult(row: Record<string, unknown>) {
   if (!store.requireLogin()) return
-  const parsed = parseResumeAiAnalysis(row.ai_analysis)
+  let source = row
+  let parsed = parseResumeAiAnalysis(row.ai_analysis)
   if (!parsed) {
-    showInfoToast('暂无 AI 分析结果，请先使用 AI 分析')
-    return
+    try {
+      source = (await resumeApi.get(row.id as number)) as Record<string, unknown>
+      parsed = parseResumeAiAnalysis(source.ai_analysis)
+    } catch {
+      /* handled */
+    }
   }
-  currentResume.value = row
+  if (!parsed) return
+  currentResume.value = source
   suggestViewResult.value = true
   analysisData.value = {
     ...parsed,
-    score: parsed.score ?? row.score,
+    score: parsed.score ?? source.score,
+  }
+  if (suggestVisible.value) {
+    suggestVisible.value = false
+    await nextTick()
   }
   suggestVisible.value = true
 }
@@ -350,17 +410,36 @@ async function analyze(row: Record<string, unknown> | null) {
   progressVisible.value = true
 }
 
-function onAnalyzeDone(result: unknown) {
+async function onAnalyzeDone(result: unknown) {
   suggestViewResult.value = false
-  analysisData.value = result as Record<string, unknown>
+  let data = normalizeResumeAnalysisResult(result)
+  await load()
+  if (!data && currentResume.value) {
+    const row = list.value.find((r) => r.id === currentResume.value!.id)
+    if (row) {
+      currentResume.value = row
+      data = parseResumeAiAnalysis(row.ai_analysis)
+    }
+  }
+  if (!data) {
+    showErrorToast('未获取到 AI 分析结果，请检查 DEEPSEEK_API_KEY 或稍后重试')
+    return
+  }
+  analysisData.value = {
+    ...data,
+    score: data.score ?? currentResume.value?.score,
+  }
+  if (suggestVisible.value) {
+    suggestVisible.value = false
+    await nextTick()
+  }
   suggestVisible.value = true
   if (currentResume.value) {
     currentResume.value.ai_adopted = false
-    if ((result as Record<string, unknown>)?.score != null) {
-      currentResume.value.score = (result as Record<string, unknown>).score
+    if (data.score != null) {
+      currentResume.value.score = data.score
     }
   }
-  load()
 }
 
 async function openAdopt() {
@@ -432,6 +511,10 @@ async function remove(row: Record<string, unknown>) {
   align-items: center;
   gap: 8px;
 }
+.result-btn-wrap {
+  display: inline-flex;
+  vertical-align: middle;
+}
 .result-btn {
   :deep(.el-icon) {
     font-size: 18px;
@@ -441,7 +524,11 @@ async function remove(row: Record<string, unknown>) {
     color: #0284c7;
   }
   &.is-disabled :deep(.el-icon) {
-    color: #cbd5e1;
+    color: #475569;
+    cursor: not-allowed;
+  }
+  &.is-disabled {
+    cursor: not-allowed;
   }
 }
 .ai-btn {
@@ -475,6 +562,7 @@ async function remove(row: Record<string, unknown>) {
 .upload-dialog-title {
   font-size: 16px;
   font-weight: 600;
+  color: #0f172a;
 }
 .dialog-close-red {
   width: 12px;
@@ -484,5 +572,167 @@ async function remove(row: Record<string, unknown>) {
   background: #ff5f57;
   cursor: pointer;
   padding: 0;
+}
+</style>
+
+<style lang="scss">
+.resume-upload-dialog.el-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 0;
+
+  .el-dialog__header {
+    margin: 0;
+    padding: 14px 20px 10px;
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .el-dialog__body {
+    padding: 0 20px 8px;
+  }
+
+  .el-dialog__footer {
+    padding: 12px 20px 18px;
+    border-top: 1px solid #f1f5f9;
+  }
+}
+
+.resume-upload-dialog {
+  .upload-dialog-body {
+    padding-top: 8px;
+  }
+
+  .upload-lead {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  .resume-uploader {
+    width: 100%;
+
+    .el-upload {
+      width: 100%;
+    }
+
+    .el-upload-dragger {
+      width: 100%;
+      height: auto;
+      min-height: 168px;
+      padding: 28px 20px;
+      border: 2px dashed #93c5fd;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f0f9ff 0%, #fff 100%);
+      transition: border-color 0.2s, background 0.2s;
+
+      &:hover {
+        border-color: #3b82f6;
+        background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+      }
+
+      &.is-dragover {
+        border-color: #2563eb;
+        background: #dbeafe;
+      }
+    }
+
+    .el-upload__text,
+    .el-upload__tip {
+      display: none;
+    }
+  }
+
+  .upload-inner {
+    text-align: center;
+  }
+
+  .upload-icon-wrap {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 14px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #3b82f6, #60a5fa);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35);
+  }
+
+  .upload-main-icon {
+    font-size: 28px;
+    color: #fff;
+  }
+
+  .upload-main-text {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .upload-sub-text {
+    margin: 0;
+    font-size: 13px;
+    color: #94a3b8;
+  }
+
+  .upload-tags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .format-tag {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 6px;
+
+    &.pdf {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    &.word {
+      background: #dbeafe;
+      color: #2563eb;
+    }
+  }
+
+  .size-hint {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-left: auto;
+  }
+
+  .selected-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0 0;
+    padding: 10px 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #166534;
+  }
+
+  .upload-dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .btn-submit {
+    min-width: 108px;
+    border-radius: 8px;
+    border: none;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+  }
 }
 </style>

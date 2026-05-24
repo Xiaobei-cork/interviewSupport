@@ -1,25 +1,21 @@
-from datetime import datetime
-from sqlalchemy import Integer, String, DateTime, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import datetime
 
-from app.database import Base
+from peewee import BigIntegerField, CharField, DateTimeField
+
+from app.models.base import BaseModel
 
 
-class User(Base):
-    __tablename__ = "users"
+class User(BaseModel):
+    class Meta:
+        table_name = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    username: Mapped[str] = mapped_column(String(50), nullable=False)
-    account: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
-    password: Mapped[str] = mapped_column(String(255), nullable=False)
-    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    interviews = relationship("InterviewRecord", back_populates="user")
-    resumes = relationship("Resume", back_populates="user")
+    id = BigIntegerField(primary_key=True)
+    username = CharField(max_length=50)
+    account = CharField(max_length=50, unique=True, index=True)
+    password = CharField(max_length=255)
+    phone = CharField(max_length=20, null=True)
+    email = CharField(max_length=50, null=True)
+    avatar_url = CharField(max_length=255, null=True)
+    address = CharField(max_length=255, null=True)
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)

@@ -12,7 +12,7 @@
       <div class="page-card profile-hero">
         <div class="hero-main">
           <div class="avatar-wrap" @click="openAvatarPicker">
-            <el-avatar :size="88" :src="profile.user.avatar_url" class="hero-avatar">
+            <el-avatar :size="88" :src="heroAvatarUrl" class="hero-avatar">
               {{ profile.user.username[0] }}
             </el-avatar>
             <span class="avatar-edit-badge">
@@ -59,17 +59,58 @@
       </div>
 
       <div class="page-card records-card">
-        <h3 class="section-title">公开面试记录</h3>
-        <el-table :data="profile.interviews" stripe empty-text="暂无公开面试">
-          <el-table-column prop="company_name" label="公司" min-width="140" />
-          <el-table-column prop="job_title" label="岗位" min-width="140" />
-          <el-table-column label="评分" width="100">
-            <template #default="{ row }">{{ row.score?.toFixed(1) || '-' }}</template>
-          </el-table-column>
-          <el-table-column label="时间" width="140">
-            <template #default="{ row }">{{ formatDate(row.interview_time as string) }}</template>
-          </el-table-column>
-        </el-table>
+        <div class="section-head">
+          <div class="section-head-left">
+            <h3 class="section-title">公开面试记录</h3>
+            <p class="section-desc">对外展示的面试复盘，可在「面试分享」中被他人浏览</p>
+          </div>
+          <span v-if="profile.interviews.length" class="section-count">
+            共 {{ profile.interviews.length }} 条
+          </span>
+        </div>
+
+        <div v-if="profile.interviews.length" class="record-list">
+          <div
+            v-for="row in profile.interviews"
+            :key="(row.id as number)"
+            class="record-item"
+            @click="goShareRecord(row)"
+          >
+            <div class="record-icon">
+              <el-icon><Briefcase /></el-icon>
+            </div>
+            <div class="record-main">
+              <div class="record-top">
+                <span class="company">{{ row.company_name }}</span>
+                <el-tag size="small" effect="plain" round class="job-tag">
+                  {{ row.job_title }}
+                </el-tag>
+              </div>
+              <div class="record-meta">
+                <div class="score-wrap">
+                  <el-rate
+                    :model-value="Number(row.score) || 0"
+                    disabled
+                    allow-half
+                    size="small"
+                  />
+                  <span class="score-num">{{ formatScore(row.score) }}</span>
+                </div>
+                <span class="record-time">
+                  <el-icon><Calendar /></el-icon>
+                  {{ formatDate(row.interview_time as string) }}
+                </span>
+              </div>
+            </div>
+            <el-icon class="record-arrow"><ArrowRight /></el-icon>
+          </div>
+        </div>
+
+        <div v-else class="records-empty">
+          <el-icon :size="56" color="#cbd5e1"><Document /></el-icon>
+          <p>暂无公开面试</p>
+          <span>将面试复盘设为公开后，会展示在这里</span>
+        </div>
       </div>
     </template>
 
@@ -82,17 +123,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
-import { Camera } from '@element-plus/icons-vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ArrowRight, Briefcase, Calendar, Camera, Document } from '@element-plus/icons-vue'
 import { useSessionRefresh } from '@/composables/useSessionRefresh'
 import { profileApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import AvatarPickerDialog from '@/components/profile/AvatarPickerDialog.vue'
 
+const router = useRouter()
 const store = useUserStore()
 const avatarPickerVisible = ref(false)
 
 const loading = ref(false)
+
+/** 与侧边栏一致：优先用 store（保存头像后立即更新），否则用 profile 接口数据 */
+const heroAvatarUrl = computed(
+  () => store.user?.avatar_url || profile.value?.user.avatar_url
+)
+
 const profile = ref<{
   user: { username: string; avatar_url?: string; created_at: string }
   stats: { interview_count: number; like_count: number; friend_count: number }
@@ -125,9 +174,19 @@ function openAvatarPicker() {
   avatarPickerVisible.value = true
 }
 
-function onProfileSaved() {
-  load()
+async function onProfileSaved() {
+  await store.fetchUser()
+  await load()
 }
+
+watch(
+  () => store.user?.avatar_url,
+  (url) => {
+    if (profile.value?.user && url) {
+      profile.value.user.avatar_url = url
+    }
+  }
+)
 
 watch(() => store.user?.id, load, { immediate: true })
 onMounted(load)
@@ -136,10 +195,25 @@ useSessionRefresh({ refresh: load, clear: clearPageData })
 function formatDate(t: string) {
   return new Date(t).toLocaleDateString('zh-CN')
 }
+
+function formatScore(score: unknown) {
+  const n = Number(score)
+  return Number.isFinite(n) ? n.toFixed(1) : '-'
+}
+
+function goShareRecord(row: Record<string, unknown>) {
+  const id = row.id
+  if (id == null) {
+    router.push('/share')
+    return
+  }
+  router.push({ path: '/share', query: { id: String(id) } })
+}
 </script>
 
 <style scoped lang="scss">
 .profile-page {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -261,11 +335,167 @@ function formatDate(t: string) {
 }
 
 .records-card {
-  .section-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #1e293b;
-    margin: 0 0 16px;
+  padding: 24px 28px 28px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.section-head-left {
+  min-width: 0;
+}
+
+.section-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+
+.section-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.section-count {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 6px 12px;
+  border-radius: 20px;
+}
+
+.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.record-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #fafbfc 0%, #fff 55%);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+
+  &:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 8px 24px rgba(59, 130, 246, 0.1);
+    transform: translateY(-1px);
+
+    .record-arrow {
+      color: #3b82f6;
+      transform: translateX(2px);
+    }
+  }
+}
+
+.record-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #dbeafe, #eff6ff);
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.record-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.company {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.job-tag {
+  border-color: #e2e8f0;
+  color: #475569;
+  background: #fff;
+}
+
+.record-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.score-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  :deep(.el-rate) {
+    height: auto;
+  }
+}
+
+.score-num {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f59e0b;
+  min-width: 28px;
+}
+
+.record-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.record-arrow {
+  font-size: 18px;
+  color: #cbd5e1;
+  flex-shrink: 0;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.records-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: #64748b;
+
+  p {
+    margin: 16px 0 8px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #475569;
+  }
+
+  span {
+    font-size: 13px;
+    color: #94a3b8;
   }
 }
 </style>

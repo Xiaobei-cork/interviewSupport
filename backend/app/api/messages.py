@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -11,15 +10,17 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 
 
 @router.get("")
-def list_messages(
+async def list_messages(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    q = db.query(Message).filter(Message.user_id == user.id)
-    total = q.count()
-    items = q.order_by(Message.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    q = Message.select().where(Message.user == user.id)
+    total = await q.aio_count()
+    items = list(
+        await q.order_by(Message.created_at.desc()).paginate(page, page_size).aio_execute()
+    )
     return ok(
         data={
             "items": [
@@ -42,15 +43,19 @@ def list_messages(
 
 
 @router.get("/unread-count")
-def unread_count(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    count = db.query(Message).filter(Message.user_id == user.id, Message.is_read == 0).count()
+async def unread_count(user: User = Depends(get_current_user), _db=Depends(get_db)):
+    count = await (
+        Message.select()
+        .where((Message.user == user.id) & (Message.is_read == 0))
+        .aio_count()
+    )
     return ok(data={"count": count}, message="查询成功")
 
 
 @router.put("/{msg_id}/read")
-def mark_read(msg_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    m = db.query(Message).filter(Message.id == msg_id, Message.user_id == user.id).first()
+async def mark_read(msg_id: int, user: User = Depends(get_current_user), _db=Depends(get_db)):
+    m = await Message.aio_get_or_none((Message.id == msg_id) & (Message.user == user.id))
     if m:
         m.is_read = 1
-        db.commit()
+        await m.aio_save()
     return ok(message="已读")

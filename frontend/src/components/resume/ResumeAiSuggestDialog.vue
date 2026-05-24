@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { StarFilled, WarningFilled, Aim, Sunny } from '@element-plus/icons-vue'
 import { useAdoptFlyAnimation, resolveEl } from '@/composables/useAdoptFlyAnimation'
 
@@ -125,7 +125,6 @@ const emit = defineEmits<{
   adopt: []
 }>()
 
-const visible = ref(false)
 const activeTab = ref('comprehensive')
 const adoptBtnRef = ref()
 const stampRef = ref<HTMLElement | null>(null)
@@ -147,18 +146,26 @@ const scoreValue = computed(() => {
 })
 const hasScore = computed(() => scoreValue.value > 0)
 
-watch(() => props.modelValue, (v) => {
-  visible.value = v
-  if (v) {
-    activeTab.value = 'comprehensive'
-    stampPop.value = false
-    if (props.viewResult && props.adopted) {
-      adoptedLocal.value = true
-    } else if (!props.viewResult) {
-      adoptedLocal.value = false
-    }
-  }
+const visible = computed({
+  get: () => props.modelValue,
+  set: (v: boolean) => emit('update:modelValue', v),
 })
+
+watch(
+  () => props.modelValue,
+  (v) => {
+    if (v) {
+      activeTab.value = 'comprehensive'
+      stampPop.value = false
+      if (props.viewResult) {
+        adoptedLocal.value = !!props.adopted
+      } else {
+        adoptedLocal.value = false
+      }
+    }
+  },
+  { immediate: true }
+)
 watch(
   () => props.adopted,
   (v) => {
@@ -166,7 +173,6 @@ watch(
   },
   { immediate: true }
 )
-watch(visible, (v) => emit('update:modelValue', v))
 
 const suggestSections = computed(() => {
   const raw = props.data?.suggest_sections as Record<string, SuggestSection[]> | undefined

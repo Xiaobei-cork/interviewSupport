@@ -7,6 +7,7 @@
     :show-after="150"
     :hide-after="200"
     popper-class="user-sidebar-popover"
+    @show="onPopoverShow"
   >
     <template #reference>
       <div class="user-trigger">
@@ -40,8 +41,8 @@
           <span class="num">{{ stats.like_count }}</span>
           <span class="label">获赞</span>
         </div>
-        <div class="stat-item" @click="go('/messages')">
-          <span class="num">{{ unreadCount || 0 }}</span>
+        <div class="stat-item stat-messages" :class="{ 'has-unread': unreadCount > 0 }" @click="go('/messages')">
+          <span class="num">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
           <span class="label">未读消息</span>
         </div>
       </div>
@@ -131,6 +132,12 @@ watch(
   },
   { immediate: true }
 )
+
+function onPopoverShow() {
+  if (store.isLoggedIn()) {
+    void store.refreshUnread()
+  }
+}
 
 function go(path: string, query?: Record<string, string>) {
   router.push({ path, query })
@@ -251,10 +258,17 @@ async function handleLogout() {
     text-align: center;
     cursor: default;
 
-    &:last-child {
+    &.stat-messages {
       cursor: pointer;
       &:hover .label {
         color: #3b82f6;
+      }
+      &.has-unread .num {
+        color: #ef4444;
+      }
+      &.has-unread .label {
+        color: #dc2626;
+        font-weight: 500;
       }
     }
 

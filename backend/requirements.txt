@@ -1,5 +1,9 @@
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+peewee==3.17.9
+peewee-async==2.0.0
+aiomysql==0.2.0
+aiosqlite==0.21.0
 sqlalchemy==2.0.36
 pymysql==1.1.1
 cryptography==44.0.0

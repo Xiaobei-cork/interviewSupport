@@ -1,6 +1,6 @@
 import logging
+
 from fastapi import APIRouter, Depends, UploadFile, File
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -30,44 +30,46 @@ def _user_dict(user: User) -> dict:
 
 
 @router.get("/me")
-def get_me(user: User = Depends(get_current_user)):
+async def get_me(user: User = Depends(get_current_user)):
     return ok(data=_user_dict(user), message="获取成功")
 
 
 @router.put("/me")
-def update_me(
+async def update_me(
     data: UserUpdate,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
     payload = data.model_dump(exclude_unset=True)
     if payload.get("phone"):
-        exists = db.query(User).filter(User.phone == payload["phone"], User.id != user.id).first()
+        exists = await User.aio_get_or_none(
+            (User.phone == payload["phone"]) & (User.id != user.id)
+        )
         if exists:
             api_raise(400, "该手机号已被其他账号使用")
     if payload.get("email"):
-        exists = db.query(User).filter(User.email == payload["email"], User.id != user.id).first()
+        exists = await User.aio_get_or_none(
+            (User.email == payload["email"]) & (User.id != user.id)
+        )
         if exists:
             api_raise(400, "该邮箱已被其他账号使用")
     for k, v in payload.items():
         setattr(user, k, v)
-    db.commit()
-    db.refresh(user)
+    await user.aio_save()
     logger.info("用户资料更新 id=%s", user.id)
     return ok(data=_user_dict(user), message="保存成功")
 
 
 @router.put("/me/password")
-def change_password(
+async def change_password(
     data: PasswordUpdate,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
     if not verify_password(data.old_password, user.password):
-        from app.core.response import api_raise
         api_raise(400, "旧密码不正确")
     user.password = hash_password(data.new_password)
-    db.commit()
+    await user.aio_save()
     logger.info("用户修改密码 id=%s", user.id)
     return ok(message="密码修改成功")
 
@@ -76,14 +78,13 @@ def change_password(
 async def upload_avatar(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
     user.avatar_url = save_file(file.file, file.filename or "avatar.png", "avatars")
-    db.commit()
-    db.refresh(user)
+    await user.aio_save()
     return ok(data=_user_dict(user), message="头像上传成功")
 
 
 @router.get("/avatars/presets")
-def get_preset_avatars():
+async def get_preset_avatars():
     return ok(data={"avatars": PRESET_AVATARS}, message="获取成功")

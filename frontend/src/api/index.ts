@@ -39,6 +39,7 @@ export const interviewApi = {
 
 export const resumeApi = {
   list: (params: object) => request.get('/resumes', { params }),
+  get: (id: number) => request.get<Record<string, unknown>>(`/resumes/${id}`),
   upload: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)

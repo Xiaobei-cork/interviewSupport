@@ -41,11 +41,17 @@
 import { ref, watch, computed, onUnmounted } from 'vue'
 import { CircleCheck } from '@element-plus/icons-vue'
 import AiRobotIcon from './AiRobotIcon.vue'
+import { showErrorToast } from '@/utils/message'
 
 const props = withDefaults(
   defineProps<{
     modelValue: boolean
-    pollFn: (taskId: string) => Promise<{ progress?: number; status?: string; result?: unknown }>
+    pollFn: (taskId: string) => Promise<{
+      progress?: number
+      status?: string
+      message?: string
+      result?: unknown
+    }>
     taskId: string
     /** interview | resume — 分析步骤文案 */
     variant?: 'interview' | 'resume'
@@ -103,6 +109,7 @@ function startPoll() {
       } else if (task.status === 'error') {
         stopPoll()
         visible.value = false
+        void showErrorToast(task.message || 'AI 分析失败，请稍后重试')
       }
     } catch {
       /* retry */

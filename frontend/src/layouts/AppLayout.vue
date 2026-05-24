@@ -15,7 +15,12 @@
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
-          <el-badge v-if="item.badge && unreadCount > 0" :value="unreadCount" class="nav-badge" />
+          <el-badge
+            v-if="item.badge && unreadCount > 0"
+            :value="unreadCount > 99 ? '99+' : unreadCount"
+            :max="99"
+            class="nav-badge"
+          />
         </router-link>
       </nav>
       <div class="sidebar-footer">
@@ -36,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed, watch } from 'vue'
 import { consumeFlashNotice } from '@/utils/flashNotice'
 import { useRoute } from 'vue-router'
 import { Briefcase, Document, Share, User, Bell } from '@element-plus/icons-vue'
@@ -58,16 +63,37 @@ const menuItems = [
   { path: '/messages', label: '消息中心', icon: Bell, badge: true },
 ]
 
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible' && store.isLoggedIn()) {
+    void store.refreshUnread()
+  }
+}
+
 onMounted(async () => {
   consumeFlashNotice()
+  document.addEventListener('visibilitychange', onVisibilityChange)
   await store.fetchUser()
   if (store.isLoggedIn()) {
     await store.refreshUnread()
   }
 })
 
-function onProfileSaved() {
-  store.fetchUser()
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
+
+watch(
+  () => route.path,
+  () => {
+    if (store.isLoggedIn()) {
+      void store.refreshUnread()
+    }
+  }
+)
+
+async function onProfileSaved() {
+  await store.fetchUser()
+  store.sessionTick++
 }
 
 </script>

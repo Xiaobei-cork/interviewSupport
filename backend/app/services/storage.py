@@ -1,11 +1,12 @@
 import logging
 import mimetypes
+import re
 import tempfile
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, Iterator
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from app.config import get_settings
 
@@ -140,6 +141,15 @@ def open_as_path(ref: str) -> Iterator[tuple[Path, bool]]:
         raise FileNotFoundError(f"文件不存在: {ref}")
 
 
+def content_disposition_header(disposition: str, filename: str) -> dict[str, str]:
+    """RFC 5987: ASCII fallback + filename* for non-Latin names (Starlette headers are latin-1)."""
+    name = (filename or "download").replace("\n", "").replace("\r", "")
+    ascii_fallback = re.sub(r"[^\x20-\x7E]+", "_", name).strip("._") or "download"
+    encoded = quote(name, safe="")
+    value = f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
+    return {"Content-Disposition": value}
+
+
 def guess_media_type(ref: str, fallback: str = "application/octet-stream") -> str:
     name = ref.split("/")[-1] if ref else ""
     if name.startswith("oss://"):
@@ -153,25 +163,21 @@ def file_inline_response(ref: str, filename: str | None = None):
 
     local = resolve_local_path(ref)
     name = filename or Path(oss_key_from_ref(ref) if is_oss_ref(ref) else ref).name
+    headers = content_disposition_header("inline", name)
+    media_type = guess_media_type(name)
     if local:
-        return FileResponse(local, filename=name, media_type=guess_media_type(name))
+        return FileResponse(local, media_type=media_type, headers=headers)
     data = read_file_bytes(ref)
-    return Response(
-        content=data,
-        media_type=guess_media_type(ref),
-        headers={"Content-Disposition": f'inline; filename="{name}"'},
-    )
+    return Response(content=data, media_type=media_type, headers=headers)
 
 
 def file_download_response(ref: str, filename: str):
     from fastapi.responses import FileResponse, Response
 
     local = resolve_local_path(ref)
+    headers = content_disposition_header("attachment", filename)
+    media_type = guess_media_type(filename)
     if local:
-        return FileResponse(local, filename=filename, media_type=guess_media_type(filename))
+        return FileResponse(local, media_type=media_type, headers=headers)
     data = read_file_bytes(ref)
-    return Response(
-        content=data,
-        media_type=guess_media_type(ref),
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return Response(content=data, media_type=media_type, headers=headers)

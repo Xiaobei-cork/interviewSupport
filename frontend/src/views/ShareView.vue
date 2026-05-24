@@ -1,36 +1,90 @@
 <template>
-  <div class="page-card share-page">
-    <h2 class="page-title">面试分享</h2>
-    <div class="share-feed" v-loading="loading">
-      <div v-for="card in list" :key="card.id" class="share-card" @click="openDetail(card)">
-        <div class="card-header">
-          <el-avatar :src="card.avatar_url" :size="44">{{ card.username?.[0] }}</el-avatar>
-          <div class="meta">
-            <span class="username">{{ card.username }}</span>
-            <span class="position">{{ card.company_name }} · {{ card.job_title }}</span>
-          </div>
-          <div class="score-wrap">
-            <el-rate :model-value="card.score || 0" disabled allow-half size="small" />
-            <span class="score-text">{{ card.score?.toFixed(1) || '-' }}</span>
-          </div>
-        </div>
-        <p class="summary">{{ card.ai_summary || '暂无 AI 分析摘要' }}</p>
-        <div class="card-footer">
-          <span class="foot-item">
-            <el-icon><Star /></el-icon>
-            <span :class="{ active: card.is_liked }">{{ card.like_count }} 赞</span>
-          </span>
-          <span class="foot-item" @click.stop="toggleFavorite(card)">
-            <el-icon><Collection /></el-icon>
-            {{ card.favorite_count }} 收藏
-          </span>
-          <span class="foot-item">
-            <el-icon><ChatDotRound /></el-icon>
-            {{ card.comment_count }} 条评论
-          </span>
+  <div class="share-page">
+    <div class="page-card share-shell">
+      <div class="page-head">
+        <div class="page-head-left">
+          <h2 class="page-title">面试分享</h2>
+          <p class="page-desc">浏览他人的公开面试复盘，点赞、收藏并参与讨论</p>
         </div>
       </div>
-      <el-empty v-if="!loading && !list.length" description="暂无公开面试记录" />
+
+      <div class="share-feed" v-loading="loading">
+        <div
+          v-for="card in list"
+          :key="card.id"
+          class="share-card"
+          :class="{ active: activeCardId === card.id }"
+          @click="openDetail(card)"
+        >
+          <div class="card-accent" />
+          <div class="card-inner">
+            <div class="card-header">
+              <el-avatar :src="card.avatar_url" :size="48" class="card-avatar">
+                {{ card.username?.[0] }}
+              </el-avatar>
+              <div class="meta">
+                <span class="username">{{ card.username }}</span>
+                <div class="position-row">
+                  <span class="company">{{ card.company_name }}</span>
+                  <span class="dot">·</span>
+                  <span class="job">{{ card.job_title }}</span>
+                </div>
+              </div>
+              <div class="score-badge">
+                <el-rate :model-value="card.score || 0" disabled allow-half size="small" />
+                <span class="score-text">{{ card.score?.toFixed(1) || '-' }}</span>
+              </div>
+            </div>
+
+            <p class="summary">
+              <span class="summary-label">AI 摘要</span>
+              {{ card.ai_summary || '暂无 AI 分析摘要，可先在面试复盘中完成分析' }}
+            </p>
+
+            <div class="card-footer">
+              <span class="foot-pill" :class="{ active: card.is_liked }">
+                <el-icon><Star /></el-icon>
+                {{ card.like_count }} 赞
+              </span>
+              <span
+                class="foot-pill"
+                :class="{ active: card.is_favorited }"
+                @click.stop="toggleFavorite(card)"
+              >
+                <el-icon><Collection /></el-icon>
+                {{ card.favorite_count }} 收藏
+              </span>
+              <span class="foot-pill">
+                <el-icon><ChatDotRound /></el-icon>
+                {{ card.comment_count }} 评论
+              </span>
+              <span class="view-hint">
+                查看详情
+                <el-icon><ArrowRight /></el-icon>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!loading && !list.length" class="feed-empty">
+          <el-icon :size="56" color="#cbd5e1"><Share /></el-icon>
+          <p>暂无公开面试记录</p>
+          <span>将面试复盘设为公开后，会出现在这里</span>
+        </div>
+      </div>
+
+      <div v-if="total > 0" class="share-pagination">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :page-sizes="[5, 10, 20, 50, 100]"
+          layout="sizes, total, prev, pager, next"
+          background
+          @size-change="onPageSizeChange"
+          @current-change="load"
+        />
+      </div>
     </div>
 
     <el-dialog
@@ -40,6 +94,7 @@
       align-center
       destroy-on-close
       :show-close="true"
+      @closed="onDetailClosed"
     >
       <template #header>
         <div class="detail-dialog-header">
@@ -138,12 +193,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { Star, Collection, ChatDotRound, MagicStick } from '@element-plus/icons-vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  ArrowRight,
+  Star,
+  Collection,
+  ChatDotRound,
+  MagicStick,
+  Share,
+} from '@element-plus/icons-vue'
 import { shareApi } from '@/api'
 import { useUserStore } from '@/stores/user'
-import { showSuccessToast } from '@/utils/message'
+import { showSuccessToast, showErrorToast } from '@/utils/message'
 
+const route = useRoute()
+const router = useRouter()
 const store = useUserStore()
 
 interface ShareCard {
@@ -181,6 +246,9 @@ interface DetailRecord {
 }
 
 const list = ref<ShareCard[]>([])
+const page = ref(1)
+const pageSize = ref(5)
+const total = ref(0)
 const loading = ref(false)
 const detailVisible = ref(false)
 const detail = ref<DetailRecord | null>(null)
@@ -188,6 +256,14 @@ const comments = ref<CommentItem[]>([])
 const commentTotal = ref(0)
 const newComment = ref('')
 const commentSending = ref(false)
+const openingDetail = ref(false)
+
+const activeCardId = computed(() => {
+  const id = route.query.id
+  if (!id) return null
+  const n = Number(id)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
 
 const aiSummary = computed(() => {
   if (!detail.value?.ai_analysis) return '暂无分析内容，可先在面试复盘中完成 AI 分析后再分享。'
@@ -201,27 +277,75 @@ const aiSummary = computed(() => {
 
 onMounted(load)
 
+watch(
+  () => route.query.id,
+  async (id) => {
+    if (!id) return
+    const numId = Number(id)
+    if (!Number.isFinite(numId) || numId <= 0) return
+    if (detailVisible.value && detail.value?.id === numId) return
+    await openDetailById(numId)
+  },
+  { immediate: true }
+)
+
 async function load() {
   loading.value = true
   try {
-    const res = await shareApi.feed({ page: 1, page_size: 20 }) as { items: ShareCard[] }
+    const res = await shareApi.feed({
+      page: page.value,
+      page_size: pageSize.value,
+    }) as { items: ShareCard[]; total: number }
     list.value = res.items
+    total.value = res.total
   } finally {
     loading.value = false
   }
+}
+
+function onPageSizeChange() {
+  page.value = 1
+  void load()
 }
 
 function formatTime(t: string) {
   return new Date(t).toLocaleString('zh-CN', { hour12: false })
 }
 
-async function openDetail(card: ShareCard) {
-  detail.value = await shareApi.detail(card.id) as DetailRecord
-  const cr = await shareApi.comments(card.id, 3) as { items: CommentItem[]; total: number }
-  comments.value = cr.items
-  commentTotal.value = cr.total
-  newComment.value = ''
-  detailVisible.value = true
+async function openDetailById(id: number) {
+  if (openingDetail.value) return
+  openingDetail.value = true
+  try {
+    detail.value = await shareApi.detail(id) as DetailRecord
+    const cr = await shareApi.comments(id, 3) as { items: CommentItem[]; total: number }
+    comments.value = cr.items
+    commentTotal.value = cr.total
+    newComment.value = ''
+    detailVisible.value = true
+  } catch {
+    showErrorToast('无法打开该分享，可能已设为私密或不存在')
+    clearShareQuery()
+  } finally {
+    openingDetail.value = false
+  }
+}
+
+function openDetail(card: ShareCard) {
+  if (route.query.id === String(card.id) && detailVisible.value) return
+  void router.replace({ path: '/share', query: { id: String(card.id) } })
+}
+
+function clearShareQuery() {
+  if (route.query.id) {
+    router.replace({ path: '/share', query: {} })
+  }
+}
+
+function onDetailClosed() {
+  detail.value = null
+  comments.value = []
+  commentTotal.value = 0
+  clearShareQuery()
 }
 
 async function toggleLike(card: ShareCard | DetailRecord | null) {
@@ -238,8 +362,21 @@ async function toggleFavorite(card: ShareCard | DetailRecord | null) {
   if (!card || !store.requireLogin()) return
   await shareApi.favorite(card.id)
   showSuccessToast('收藏操作成功')
+  await syncCardInList(card.id)
   if (detail.value?.id === card.id) {
     detail.value = await shareApi.detail(card.id) as DetailRecord
+  }
+}
+
+async function syncCardInList(id: number) {
+  const idx = list.value.findIndex((c) => c.id === id)
+  if (idx >= 0) {
+    const fresh = await shareApi.feed({
+      page: page.value,
+      page_size: pageSize.value,
+    }) as { items: ShareCard[] }
+    const updated = fresh.items.find((c) => c.id === id)
+    if (updated) list.value[idx] = updated
   }
 }
 
@@ -269,29 +406,92 @@ async function loadMoreComments() {
 </script>
 
 <style scoped lang="scss">
-.share-page .page-title {
-  margin-bottom: 20px;
+.share-page {
+  width: 100%;
+}
+
+.share-shell {
+  padding: 24px 28px 28px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.page-head-left {
+  min-width: 0;
+}
+
+.page-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.page-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.5;
 }
 
 .share-feed {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  min-height: 120px;
 }
 
 .share-card {
-  padding: 20px 22px;
+  position: relative;
+  border-radius: 16px;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
+  background: linear-gradient(135deg, #fafbfc 0%, #fff 48%);
   cursor: pointer;
-  background: #fff;
-  transition: all 0.2s;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
 
   &:hover {
     border-color: #93c5fd;
-    box-shadow: 0 8px 24px rgba(59, 130, 246, 0.1);
-    transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(59, 130, 246, 0.12);
+    transform: translateY(-2px);
+
+    .view-hint {
+      color: #3b82f6;
+    }
   }
+
+  &.active {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  }
+}
+
+.card-accent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #3b82f6, #60a5fa);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.share-card:hover .card-accent,
+.share-card.active .card-accent {
+  opacity: 1;
+}
+
+.card-inner {
+  padding: 20px 22px 18px 24px;
 }
 
 .card-header {
@@ -300,53 +500,152 @@ async function loadMoreComments() {
   gap: 14px;
 }
 
+.card-avatar {
+  flex-shrink: 0;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
 .meta {
   flex: 1;
   min-width: 0;
-  .username {
-    font-weight: 600;
-    font-size: 15px;
-    color: #1e293b;
-    display: block;
+}
+
+.username {
+  font-weight: 600;
+  font-size: 15px;
+  color: #0f172a;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.position-row {
+  font-size: 13px;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+
+  .company {
+    font-weight: 500;
+    color: #475569;
   }
-  .position {
-    font-size: 13px;
-    color: #64748b;
-    margin-top: 2px;
+
+  .dot {
+    color: #cbd5e1;
   }
 }
 
-.score-wrap {
+.score-badge {
   text-align: right;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: #fffbeb;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+
+  :deep(.el-rate) {
+    height: auto;
+  }
+
   .score-text {
-    font-size: 12px;
-    color: #64748b;
     display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #d97706;
     margin-top: 2px;
+    text-align: center;
   }
 }
 
 .summary {
-  margin: 14px 0 12px;
+  margin: 16px 0 14px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border-left: 3px solid #93c5fd;
   color: #475569;
   font-size: 14px;
-  line-height: 1.65;
+  line-height: 1.7;
+
+  .summary-label {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #3b82f6;
+    background: #eff6ff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
 }
 
 .card-footer {
   display: flex;
-  gap: 20px;
-  color: #94a3b8;
-  font-size: 13px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 
-  .foot-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    .active {
-      color: #3b82f6;
-      font-weight: 500;
-    }
+.foot-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+
+  &.active {
+    background: #eff6ff;
+    color: #2563eb;
+    font-weight: 500;
+  }
+}
+
+.view-hint {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #94a3b8;
+  transition: color 0.15s;
+}
+
+.feed-empty {
+  text-align: center;
+  padding: 56px 24px;
+  color: #64748b;
+
+  p {
+    margin: 16px 0 8px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #475569;
+  }
+
+  span {
+    font-size: 13px;
+    color: #94a3b8;
+  }
+}
+
+.share-pagination {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: flex-end;
+
+  :deep(.el-pagination) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px 0;
   }
 }
 
@@ -373,6 +672,12 @@ async function loadMoreComments() {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 20px;
+}
+
+@media (max-width: 720px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .info-panel {

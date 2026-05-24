@@ -127,7 +127,7 @@
 
     <div v-else class="form-layout">
       <div class="form-main">
-        <section class="form-section">
+        <section class="form-section form-section-basic">
           <h3 class="section-title">
             <el-icon><OfficeBuilding /></el-icon>
             基本信息
@@ -135,26 +135,50 @@
           <el-form :model="form" label-position="top" class="styled-form">
             <el-row :gutter="16">
               <el-col :span="12">
-                <el-form-item label="公司名称" required>
-                  <el-input v-model="form.company_name" placeholder="请输入公司名称" />
+                <el-form-item label="公司名称" required class="form-field-item">
+                  <el-input
+                    v-model="form.company_name"
+                    placeholder="请输入公司名称"
+                    size="large"
+                    class="form-field-input"
+                    clearable
+                  >
+                    <template #prefix>
+                      <el-icon class="field-prefix"><OfficeBuilding /></el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
               </el-col>
               <el-col :span="12">
-                <el-form-item label="岗位名称" required>
-                  <el-input v-model="form.job_title" placeholder="请输入岗位名称" />
+                <el-form-item label="岗位名称" required class="form-field-item">
+                  <el-input
+                    v-model="form.job_title"
+                    placeholder="请输入岗位名称"
+                    size="large"
+                    class="form-field-input"
+                    clearable
+                  >
+                    <template #prefix>
+                      <el-icon class="field-prefix"><Briefcase /></el-icon>
+                    </template>
+                  </el-input>
                 </el-form-item>
               </el-col>
             </el-row>
-            <el-form-item label="面试时间" required>
-              <el-date-picker
-                v-model="form.interview_time"
-                type="datetime"
-                value-format="YYYY-MM-DDTHH:mm:ss"
-                style="width: 100%"
-                placeholder="选择面试时间"
-              />
+            <el-form-item label="面试时间" required class="form-field-item">
+              <div class="datetime-field">
+                <el-icon class="datetime-prefix"><Clock /></el-icon>
+                <el-date-picker
+                  v-model="form.interview_time"
+                  type="datetime"
+                  value-format="YYYY-MM-DDTHH:mm:ss"
+                  placeholder="选择面试时间"
+                  size="large"
+                  class="form-field-input datetime-picker"
+                />
+              </div>
             </el-form-item>
-            <el-form-item label="岗位 JD">
+            <el-form-item label="岗位 JD" class="form-field-item">
               <el-input
                 v-model="form.job_jd"
                 type="textarea"
@@ -162,9 +186,12 @@
                 maxlength="1000"
                 show-word-limit
                 placeholder="粘贴或输入岗位描述，AI 将仅依据此处内容分析"
+                class="form-field-textarea"
+                resize="none"
               />
+              <p class="field-hint">建议填写岗位职责与要求，便于 AI 针对性分析</p>
             </el-form-item>
-            <el-form-item label="备注">
+            <el-form-item label="备注" class="form-field-item form-field-item-last">
               <el-input
                 v-model="form.remark"
                 type="textarea"
@@ -172,6 +199,8 @@
                 maxlength="500"
                 show-word-limit
                 placeholder="记录面试过程、感受等，材料越完整分析越准确"
+                class="form-field-textarea"
+                resize="none"
               />
             </el-form-item>
           </el-form>
@@ -208,10 +237,19 @@
             <el-icon><View /></el-icon>
             可见性
           </h3>
-          <el-radio-group v-model="form.visibility" class="visibility-group">
-            <el-radio :value="1">公开</el-radio>
-            <el-radio :value="2">仅好友可见</el-radio>
-            <el-radio :value="0">私密</el-radio>
+          <el-radio-group v-model="form.visibility" class="visibility-card-group">
+            <el-radio :value="1" class="visibility-card">
+              <span class="v-title">公开</span>
+              <span class="v-desc">所有人可见</span>
+            </el-radio>
+            <el-radio :value="2" class="visibility-card">
+              <span class="v-title">仅好友</span>
+              <span class="v-desc">好友可见</span>
+            </el-radio>
+            <el-radio :value="0" class="visibility-card">
+              <span class="v-title">私密</span>
+              <span class="v-desc">仅自己可见</span>
+            </el-radio>
           </el-radio-group>
           <el-checkbox
             v-if="form.visibility === 1"
@@ -272,6 +310,7 @@
 
     <template v-if="mode !== 'preview'" #footer>
       <div class="form-footer">
+        <el-button class="btn-cancel" @click="visible = false">取消</el-button>
         <el-button type="primary" class="btn-primary" :loading="saving" @click="save">保存</el-button>
       </div>
     </template>
@@ -283,6 +322,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import {
   UploadFilled,
   OfficeBuilding,
+  Briefcase,
   Microphone,
   View,
   MagicStick,
@@ -654,7 +694,8 @@ defineExpose({ setSaving: (v: boolean) => { saving.value = v } })
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
-  padding: 18px 20px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .section-title {
@@ -671,11 +712,130 @@ defineExpose({ setSaving: (v: boolean) => { saving.value = v } })
   }
 }
 
+.form-section-basic {
+  background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
+}
+
 .styled-form {
-  :deep(.el-form-item__label) {
-    font-weight: 500;
-    color: #475569;
+  :deep(.form-field-item) {
+    margin-bottom: 18px;
   }
+
+  :deep(.form-field-item-last) {
+    margin-bottom: 0;
+  }
+
+  :deep(.el-form-item__label) {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.4;
+    padding-bottom: 6px;
+
+    &::before {
+      color: #ef4444 !important;
+    }
+  }
+
+  :deep(.form-field-input .el-input__wrapper) {
+    border-radius: 10px;
+    padding: 4px 12px 4px 8px;
+    background: #f8fafc;
+    box-shadow: 0 0 0 1px #e2e8f0 inset;
+    transition: box-shadow 0.2s, background 0.2s;
+
+    &:hover {
+      background: #fff;
+      box-shadow: 0 0 0 1px #cbd5e1 inset;
+    }
+
+    &.is-focus {
+      background: #fff;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35) inset;
+    }
+  }
+
+  :deep(.field-prefix) {
+    color: #94a3b8;
+    font-size: 16px;
+  }
+
+  :deep(.form-field-textarea .el-textarea__inner) {
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: #f8fafc;
+    border: none;
+    box-shadow: 0 0 0 1px #e2e8f0 inset;
+    font-size: 14px;
+    line-height: 1.65;
+    color: #1e293b;
+    transition: box-shadow 0.2s, background 0.2s;
+
+    &::placeholder {
+      color: #94a3b8;
+    }
+
+    &:hover {
+      background: #fff;
+      box-shadow: 0 0 0 1px #cbd5e1 inset;
+    }
+
+    &:focus {
+      background: #fff;
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35) inset;
+    }
+  }
+
+  :deep(.el-input__count) {
+    background: transparent;
+    color: #94a3b8;
+    font-size: 12px;
+  }
+}
+
+.datetime-field {
+  position: relative;
+  width: 100%;
+
+  .datetime-prefix {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    color: #94a3b8;
+    font-size: 16px;
+    pointer-events: none;
+  }
+
+  :deep(.datetime-picker) {
+    width: 100%;
+
+    .el-input__wrapper {
+      padding-left: 36px;
+      border-radius: 10px;
+      background: #f8fafc;
+      box-shadow: 0 0 0 1px #e2e8f0 inset;
+      transition: box-shadow 0.2s, background 0.2s;
+
+      &:hover {
+        background: #fff;
+        box-shadow: 0 0 0 1px #cbd5e1 inset;
+      }
+
+      &.is-focus {
+        background: #fff;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35) inset;
+      }
+    }
+  }
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
 }
 
 .audio-upload {
@@ -688,16 +848,22 @@ defineExpose({ setSaving: (v: boolean) => { saving.value = v } })
 }
 
 .upload-inner {
-  padding: 28px 16px;
-  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
-  border: 1px dashed #93c5fd;
-  border-radius: 12px;
+  padding: 32px 20px;
+  background: linear-gradient(180deg, #f0f9ff 0%, #fff 100%);
+  border: 2px dashed #93c5fd;
+  border-radius: 14px;
   text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+
+  &:hover {
+    border-color: #3b82f6;
+    background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+  }
 
   .upload-title {
     margin: 10px 0 4px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     color: #2563eb;
   }
   .upload-sub {
@@ -731,11 +897,70 @@ defineExpose({ setSaving: (v: boolean) => { saving.value = v } })
   gap: 14px;
 }
 
-.visibility-group {
+.visibility-card-group {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 8px;
+  width: 100%;
+
+  :deep(.el-radio) {
+    width: 100%;
+    height: auto;
+    margin-right: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+
+    .el-radio__input {
+      display: none;
+    }
+
+    .el-radio__label {
+      width: 100%;
+      padding: 0;
+    }
+  }
+
+  :deep(.visibility-card) {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+
+    .v-title {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #334155;
+      line-height: 1.3;
+    }
+
+    .v-desc {
+      display: block;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    &:hover {
+      border-color: #93c5fd;
+      background: #fff;
+    }
+
+    &.is-checked {
+      border-color: #3b82f6;
+      background: linear-gradient(135deg, #eff6ff 0%, #fff 100%);
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2);
+
+      .v-title {
+        color: #1d4ed8;
+      }
+    }
+  }
 }
 
 .public-audio-check {
@@ -867,14 +1092,30 @@ defineExpose({ setSaving: (v: boolean) => { saving.value = v } })
   gap: 12px;
   width: 100%;
 
-  .btn-ghost {
-    border-radius: 8px;
+  .btn-cancel {
+    border-radius: 10px;
+    min-width: 88px;
+    color: #64748b;
+    border-color: #e2e8f0;
+    background: #fff;
+
+    &:hover {
+      color: #334155;
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
   }
+
   .btn-primary {
-    border-radius: 8px;
+    border-radius: 10px;
     min-width: 96px;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     border: none;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
+
+    &:hover {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    }
   }
 }
 </style>

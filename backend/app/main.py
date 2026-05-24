@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
+from app.database import connect_db, close_db
 from app.core.logging_config import setup_logging
 from app.core.response import parse_error_detail, ok
 from app.api import auth, users, interviews, resumes, share, friends, messages, profile, files
@@ -31,8 +32,22 @@ async def lifespan(app: FastAPI):
         logger.info("OSS 已启用 bucket=%s endpoint=%s", cfg.oss_bucket, cfg.oss_endpoint)
     else:
         logger.warning("OSS 未配置，文件将保存到本地 uploads/")
+    await connect_db()
+    try:
+        from app.services.message_service import backfill_social_messages
+
+        stats = await backfill_social_messages()
+        if stats["created"]:
+            logger.info(
+                "站内消息回填：新建 %s 条，跳过 %s 条",
+                stats["created"],
+                stats["skipped"],
+            )
+    except Exception as exc:
+        logger.warning("站内消息回填跳过（请先执行 alembic upgrade head）: %s", exc)
     logger.info("面试助手 API 启动")
     yield
+    await close_db()
     logger.info("面试助手 API 关闭")
 
 

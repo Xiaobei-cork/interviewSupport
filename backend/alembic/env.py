@@ -6,8 +6,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.database import Base
-from app.models import *  # noqa: F401, F403
 from app.config import get_settings
 
 config = context.config
@@ -16,7 +14,7 @@ if config.config_file_name is not None:
 
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
-target_metadata = Base.metadata
+target_metadata = None
 
 
 def run_migrations_offline():

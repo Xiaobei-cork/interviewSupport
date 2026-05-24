@@ -8,6 +8,9 @@ backend/.env
 # --- 本地文档（仅本机维护，不上传 GitHub）---
 docs/本地开发与运维手册.md
 
+# --- 测试误生成的 SQLite 内存库文件 ---
+file::memory:*
+
 # --- Python ---
 __pycache__/
 *.py[cod]

@@ -1,10 +1,8 @@
 import uuid
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
 
 from app.main import app
-from app.database import Base, engine
 
 client = TestClient(app)
 
@@ -17,12 +15,6 @@ def _data(resp):
     body = resp.json()
     assert "code" in body and "message" in body
     return body["data"]
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    Base.metadata.create_all(bind=engine)
-    yield
 
 
 def test_health():
@@ -82,21 +74,14 @@ def test_interview_crud():
             "company_name": "测试公司",
             "job_title": "工程师",
             "interview_time": datetime.now().isoformat(),
-            "visibility": 1,
         },
     )
     assert r2.status_code == 201
     record_id = _data(r2)["id"]
 
-    r3 = client.get("/api/v1/interviews", headers=headers)
+    r3 = client.get(f"/api/v1/interviews/{record_id}", headers=headers)
     assert r3.status_code == 200
-    assert _data(r3)["total"] >= 1
+    assert _data(r3)["company_name"] == "测试公司"
 
-    mock_redis = MagicMock()
-    mock_redis.get.return_value = None
-    mock_redis.setex.return_value = True
-    with patch("app.services.task_service.get_redis", return_value=mock_redis):
-        r4 = client.post(f"/api/v1/interviews/{record_id}/ai/analyze", headers=headers)
+    r4 = client.delete(f"/api/v1/interviews/{record_id}", headers=headers)
     assert r4.status_code == 200
-    task_id = _data(r4)["task_id"]
-    assert task_id

@@ -111,9 +111,72 @@ async def analyze_interview(
     return await _call_deepseek(system, user_payload)
 
 
-async def analyze_resume(resume_text: str) -> dict[str, Any]:
-    _require_deepseek()
+def _minimal_resume_result(resume_text: str) -> dict[str, Any]:
+    """无 DeepSeek 时返回可展示的简历分析结构（不编造简历内容）。"""
     text = (resume_text or "").strip()
+    short = len(text) < 80
+    overall = (
+        "简历正文缺失或过短，无法做实质性分析；请上传完整简历或配置 DEEPSEEK_API_KEY 启用完整 AI 分析。"
+        if short
+        else "DeepSeek API 未配置，以下为基于现有正文的通用优化方向（非完整 AI 分析）。"
+    )
+    highlights = ["已收到简历文件"] if not short else []
+    improvements = [
+        "补充完整简历正文后重新分析",
+        "在 .env 配置 DEEPSEEK_API_KEY 以启用完整 AI 分析",
+    ]
+    if not short:
+        improvements.insert(0, "对照目标岗位 JD 突出与岗位相关的项目与技能关键词")
+    sections = {
+        "comprehensive": [
+            {"icon": "star", "title": "总体评价", "content": overall},
+            {
+                "icon": "bulb",
+                "title": "优化建议",
+                "content": improvements,
+            },
+        ],
+        "problems": [
+            {
+                "icon": "warn",
+                "title": "待完善项",
+                "content": improvements if short else ["建议配置 AI 后获取更细的问题诊断"],
+            }
+        ],
+        "highlights_eval": [
+            {
+                "icon": "star",
+                "title": "材料说明",
+                "content": highlights or ["请先上传可解析的简历正文"],
+            }
+        ],
+        "plan": [
+            {
+                "icon": "target",
+                "title": "下一步",
+                "content": "1. 配置 DEEPSEEK_API_KEY\n2. 重新发起 AI 分析\n3. 根据建议修改后再次分析",
+            }
+        ],
+    }
+    return {
+        "score": 2.5 if short else 3.0,
+        "highlights": highlights or ["材料待完善"],
+        "improvements": improvements,
+        "overall": overall,
+        "tabs": {
+            "comprehensive": overall,
+            "problems": improvements[0],
+            "highlights_eval": highlights[0] if highlights else "—",
+            "plan": "配置 API 后重新分析以获得完整建议。",
+        },
+        "suggest_sections": sections,
+    }
+
+
+async def analyze_resume(resume_text: str) -> dict[str, Any]:
+    text = (resume_text or "").strip()
+    if not settings.deepseek_enabled:
+        return _minimal_resume_result(text)
     if len(text) < 80:
         text = (
             "【系统说明】简历正文缺失或过短，无法做实质性分析。"

@@ -1,28 +1,41 @@
-from datetime import datetime
-from sqlalchemy import Integer, String, Text, DateTime, SmallInteger, ForeignKey, func, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+import datetime
 
-from app.database import Base
+from peewee import (
+    BigIntegerField,
+    CharField,
+    DateTimeField,
+    ForeignKeyField,
+    SmallIntegerField,
+    TextField,
+)
 
-
-class UserFriend(Base):
-    __tablename__ = "user_friend"
-    __table_args__ = (UniqueConstraint("user_id", "friend_id", name="uq_friend"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    friend_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="accepted")  # pending / accepted
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+from app.models.base import BaseModel
+from app.models.user import User
 
 
-class Message(Base):
-    __tablename__ = "message"
+class UserFriend(BaseModel):
+    class Meta:
+        table_name = "user_friend"
+        indexes = ((("user_id", "friend_id"), True),)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(100), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    msg_type: Mapped[str] = mapped_column(String(30), default="system")  # system / like / comment
-    is_read: Mapped[int] = mapped_column(SmallInteger, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, column_name="user_id")
+    friend = ForeignKeyField(User, backref="friend_of", column_name="friend_id")
+    status = CharField(max_length=20, default="accepted")
+    created_at = DateTimeField(default=datetime.datetime.now)
+
+
+class Message(BaseModel):
+    class Meta:
+        table_name = "message"
+        indexes = ((("user_id", "source_type", "source_id"), True),)
+
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, backref="messages", column_name="user_id", index=True)
+    title = CharField(max_length=100)
+    content = TextField()
+    msg_type = CharField(max_length=30, default="system")
+    source_type = CharField(max_length=20, null=True)
+    source_id = BigIntegerField(null=True)
+    is_read = SmallIntegerField(default=0)
+    created_at = DateTimeField(default=datetime.datetime.now)

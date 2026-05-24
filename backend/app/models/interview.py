@@ -1,74 +1,71 @@
-from datetime import datetime
-from sqlalchemy import Integer, String, Text, DateTime, Float, SmallInteger, ForeignKey, func, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import datetime
 
-from app.database import Base
+from peewee import (
+    BigIntegerField,
+    CharField,
+    DateTimeField,
+    FloatField,
+    ForeignKeyField,
+    SmallIntegerField,
+    TextField,
+)
 
-
-class InterviewRecord(Base):
-    __tablename__ = "interview_record"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    company_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    job_title: Mapped[str] = mapped_column(String(100), nullable=False)
-    job_jd: Mapped[str | None] = mapped_column(Text, nullable=True)
-    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
-    audio_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    interview_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    ai_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
-    score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    ai_adopted: Mapped[int] = mapped_column(SmallInteger, default=0)  # 1=用户已采纳当前 AI 分析
-    visibility: Mapped[int] = mapped_column(SmallInteger, default=1)  # 0=私密 1=公开 2=仅好友
-    public_audio: Mapped[int] = mapped_column(SmallInteger, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    user = relationship("User", back_populates="interviews")
-    likes = relationship("InterviewLike", back_populates="interview", cascade="all, delete-orphan")
-    favorites = relationship("InterviewFavorite", back_populates="interview", cascade="all, delete-orphan")
-    comments = relationship("InterviewComment", back_populates="interview", cascade="all, delete-orphan")
+from app.models.base import BaseModel
+from app.models.user import User
 
 
-class InterviewLike(Base):
-    __tablename__ = "interview_like"
-    __table_args__ = (UniqueConstraint("user_id", "interview_id", name="uq_like"),)
+class InterviewRecord(BaseModel):
+    class Meta:
+        table_name = "interview_record"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    interview_id: Mapped[int] = mapped_column(Integer, ForeignKey("interview_record.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    interview = relationship("InterviewRecord", back_populates="likes")
-
-
-class InterviewFavorite(Base):
-    __tablename__ = "interview_favorite"
-    __table_args__ = (UniqueConstraint("user_id", "interview_id", name="uq_favorite"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    interview_id: Mapped[int] = mapped_column(Integer, ForeignKey("interview_record.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    interview = relationship("InterviewRecord", back_populates="favorites")
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, backref="interviews", column_name="user_id", index=True)
+    company_name = CharField(max_length=100)
+    job_title = CharField(max_length=100)
+    job_jd = TextField(null=True)
+    remark = TextField(null=True)
+    audio_url = CharField(max_length=255, null=True)
+    interview_time = DateTimeField()
+    ai_analysis = TextField(null=True)
+    score = FloatField(null=True)
+    ai_adopted = SmallIntegerField(default=0)
+    visibility = SmallIntegerField(default=1)
+    public_audio = SmallIntegerField(default=0)
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)
 
 
-class InterviewComment(Base):
-    __tablename__ = "interview_comment"
+class InterviewLike(BaseModel):
+    class Meta:
+        table_name = "interview_like"
+        indexes = ((("user_id", "interview_id"), True),)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    interview_id: Mapped[int] = mapped_column(Integer, ForeignKey("interview_record.id"), nullable=False)
-    parent_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("interview_comment.id"), nullable=True)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[int] = mapped_column(SmallInteger, default=1)  # 1=正常 0=删除 2=举报
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, column_name="user_id")
+    interview = ForeignKeyField(InterviewRecord, backref="likes", column_name="interview_id")
+    created_at = DateTimeField(default=datetime.datetime.now)
 
-    interview = relationship("InterviewRecord", back_populates="comments")
-    user = relationship("User")
+
+class InterviewFavorite(BaseModel):
+    class Meta:
+        table_name = "interview_favorite"
+        indexes = ((("user_id", "interview_id"), True),)
+
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, column_name="user_id")
+    interview = ForeignKeyField(InterviewRecord, backref="favorites", column_name="interview_id")
+    created_at = DateTimeField(default=datetime.datetime.now)
+
+
+class InterviewComment(BaseModel):
+    class Meta:
+        table_name = "interview_comment"
+
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, backref="comments", column_name="user_id")
+    interview = ForeignKeyField(InterviewRecord, backref="comments", column_name="interview_id")
+    parent = ForeignKeyField("self", null=True, backref="replies", column_name="parent_id")
+    content = TextField()
+    status = SmallIntegerField(default=1)
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)

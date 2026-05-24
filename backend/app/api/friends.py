@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.deps import get_current_user
@@ -11,37 +10,37 @@ router = APIRouter(prefix="/friends", tags=["friends"])
 
 
 @router.post("/request")
-def request_friend(friend_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def request_friend(
+    friend_id: int, user: User = Depends(get_current_user), _db=Depends(get_db)
+):
     if friend_id == user.id:
         api_raise(400, "不能添加自己")
-    target = db.query(User).filter(User.id == friend_id).first()
+    target = await User.aio_get_or_none(User.id == friend_id)
     if not target:
         api_raise(404, "用户不存在")
-    existing = (
-        db.query(UserFriend)
-        .filter(
-            ((UserFriend.user_id == user.id) & (UserFriend.friend_id == friend_id))
-            | ((UserFriend.user_id == friend_id) & (UserFriend.friend_id == user.id))
-        )
-        .first()
+    existing = await UserFriend.aio_get_or_none(
+        ((UserFriend.user == user.id) & (UserFriend.friend == friend_id))
+        | ((UserFriend.user == friend_id) & (UserFriend.friend == user.id))
     )
     if existing:
         api_raise(400, "已是好友或已发送请求")
-    db.add(UserFriend(user_id=user.id, friend_id=friend_id, status="pending"))
-    db.commit()
+    await UserFriend.aio_create(user=user.id, friend=friend_id, status="pending")
     return ok(message="好友请求已发送")
 
 
 @router.put("/{friendship_id}/accept")
-def accept_friend(friendship_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    f = db.query(UserFriend).filter(UserFriend.id == friendship_id, UserFriend.friend_id == user.id).first()
+async def accept_friend(
+    friendship_id: int, user: User = Depends(get_current_user), _db=Depends(get_db)
+):
+    f = await UserFriend.aio_get_or_none(
+        (UserFriend.id == friendship_id) & (UserFriend.friend == user.id)
+    )
     if not f:
         api_raise(404, "好友请求不存在")
     f.status = "accepted"
-    reverse = UserFriend(user_id=user.id, friend_id=f.user_id, status="accepted")
-    if not db.query(UserFriend).filter(
-        UserFriend.user_id == user.id, UserFriend.friend_id == f.user_id
-    ).first():
-        db.add(reverse)
-    db.commit()
+    await f.aio_save()
+    if not await UserFriend.aio_get_or_none(
+        (UserFriend.user == user.id) & (UserFriend.friend == f.user_id)
+    ):
+        await UserFriend.aio_create(user=user.id, friend=f.user_id, status="accepted")
     return ok(message="已接受好友请求")

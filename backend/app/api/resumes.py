@@ -2,10 +2,10 @@ import json
 import logging
 from typing import Optional
 from pathlib import Path
-from fastapi import APIRouter, Depends, Query, UploadFile, File, BackgroundTasks
-from sqlalchemy.orm import Session
 
-from app.database import get_db
+from fastapi import APIRouter, Depends, Query, UploadFile, File, BackgroundTasks
+
+from app.database import database, get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.resume import Resume
@@ -45,18 +45,20 @@ def _file_type(filename: str) -> str:
 
 
 @router.get("")
-def list_resumes(
+async def list_resumes(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     file_type: Optional[str] = None,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    q = db.query(Resume).filter(Resume.user_id == user.id)
+    q = Resume.select().where(Resume.user == user.id)
     if file_type and file_type != "all":
-        q = q.filter(Resume.file_type == file_type)
-    total = q.count()
-    items = q.order_by(Resume.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        q = q.where(Resume.file_type == file_type)
+    total = await q.aio_count()
+    items = list(
+        await q.order_by(Resume.created_at.desc()).paginate(page, page_size).aio_execute()
+    )
     return ok(
         data={
             "items": [_resume_dict(i) for i in items],
@@ -72,43 +74,45 @@ def list_resumes(
 async def upload_resume(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
     ft = _file_type(file.filename or "")
     url = save_file(file.file, file.filename or "resume.pdf", "resumes")
-    resume = Resume(
-        user_id=user.id,
+    resume = await Resume.aio_create(
+        user=user.id,
         file_name=file.filename or "resume",
         file_url=url,
         file_type=ft,
     )
-    db.add(resume)
-    db.commit()
-    db.refresh(resume)
     return created(data=_resume_dict(resume), message="上传成功")
 
 
 @router.get("/{resume_id}")
-def get_resume(resume_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+async def get_resume(
+    resume_id: int, user: User = Depends(get_current_user), _db=Depends(get_db)
+):
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     return ok(data=_resume_dict(r), message="获取成功")
 
 
 @router.delete("/{resume_id}")
-def delete_resume(resume_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+async def delete_resume(
+    resume_id: int, user: User = Depends(get_current_user), _db=Depends(get_db)
+):
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
-    db.delete(r)
-    db.commit()
+    await r.aio_delete_instance()
     return ok(message="删除成功")
 
 
 @router.get("/{resume_id}/preview")
-def preview_resume(resume_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+async def preview_resume(
+    resume_id: int, user: User = Depends(get_current_user), _db=Depends(get_db)
+):
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     try:
@@ -118,13 +122,13 @@ def preview_resume(resume_id: int, user: User = Depends(get_current_user), db: S
 
 
 @router.post("/{resume_id}/ai/analyze")
-def analyze_resume(
+async def analyze_resume(
     resume_id: int,
     background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     if r.ai_adopted:
@@ -135,7 +139,6 @@ def analyze_resume(
     file_type = r.file_type
 
     async def worker():
-        from app.database import SessionLocal
         text = "示例简历内容：计算机专业，3年后端开发经验。"
         try:
             with open_as_path(file_url) as (path, _):
@@ -143,17 +146,14 @@ def analyze_resume(
         except FileNotFoundError:
             logger.warning("简历文件无法读取 resume_id=%s url=%s", resume_id_copy, file_url)
         result = await ai_service.analyze_resume(text)
-        sess = SessionLocal()
-        try:
-            rec = sess.query(Resume).filter(Resume.id == resume_id_copy).first()
+        async with database.aio_connection():
+            rec = await Resume.aio_get_or_none(Resume.id == resume_id_copy)
             if rec:
                 rec.ai_analysis = json.dumps(result, ensure_ascii=False)
                 rec.ai_adopted = 0
                 if result.get("score") is not None:
                     rec.score = float(result["score"])
-                sess.commit()
-        finally:
-            sess.close()
+                await rec.aio_save()
         return result
 
     background_tasks.add_task(run_task, task_id, worker)
@@ -161,13 +161,13 @@ def analyze_resume(
 
 
 @router.post("/{resume_id}/ai/adopt")
-def adopt_resume_ai(
+async def adopt_resume_ai(
     resume_id: int,
     data: ResumeAiAdoptRequest,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     if not r.ai_analysis:
@@ -182,13 +182,12 @@ def adopt_resume_ai(
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
     r.ai_adopted = 1
-    db.commit()
-    db.refresh(r)
+    await r.aio_save()
     return ok(data=_resume_dict(r), message="已采纳 AI 分析")
 
 
 @router.get("/ai/tasks/{task_id}")
-def poll_resume_task(task_id: str):
+async def poll_resume_task(task_id: str):
     task = get_task(task_id)
     if not task:
         api_raise(404, "任务不存在")
@@ -200,9 +199,9 @@ async def deep_optimize_resume_api(
     resume_id: int,
     data: ResumeDeepOptimizeRequest,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     text = "示例简历内容：计算机专业，3年后端开发经验。"
@@ -218,13 +217,13 @@ async def deep_optimize_resume_api(
 
 
 @router.put("/{resume_id}/optimized-preview")
-def save_optimized_preview(
+async def save_optimized_preview(
     resume_id: int,
     data: ResumeSaveOptimizedRequest,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     stored: dict = {}
@@ -237,7 +236,7 @@ def save_optimized_preview(
             stored = {"legacy": r.ai_analysis}
     stored["optimized_preview"] = data.preview.model_dump()
     r.ai_analysis = json.dumps(stored, ensure_ascii=False)
-    db.commit()
+    await r.aio_save()
     return ok(message="优化内容已保存")
 
 
@@ -246,9 +245,9 @@ async def resume_chat(
     resume_id: int,
     data: AiChatRequest,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     ctx = r.ai_analysis or f"简历文件名：{r.file_name}（暂无解析正文）"
@@ -257,13 +256,13 @@ async def resume_chat(
 
 
 @router.get("/{resume_id}/export")
-def export_resume(
+async def export_resume(
     resume_id: int,
     format: str = Query("pdf"),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    _db=Depends(get_db),
 ):
-    r = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user.id).first()
+    r = await Resume.aio_get_or_none((Resume.id == resume_id) & (Resume.user == user.id))
     if not r:
         api_raise(404, "简历不存在")
     try:

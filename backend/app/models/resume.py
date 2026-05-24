@@ -1,24 +1,30 @@
-from datetime import datetime
-from sqlalchemy import Integer, String, Text, DateTime, Float, SmallInteger, ForeignKey, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import datetime
 
-from app.database import Base
+from peewee import (
+    BigIntegerField,
+    CharField,
+    DateTimeField,
+    FloatField,
+    ForeignKeyField,
+    SmallIntegerField,
+    TextField,
+)
+
+from app.models.base import BaseModel
+from app.models.user import User
 
 
-class Resume(Base):
-    __tablename__ = "resume"
+class Resume(BaseModel):
+    class Meta:
+        table_name = "resume"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    file_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    file_url: Mapped[str] = mapped_column(String(255), nullable=False)
-    file_type: Mapped[str] = mapped_column(String(10), nullable=False)  # word / pdf
-    ai_analysis: Mapped[str | None] = mapped_column(Text, nullable=True)
-    score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    ai_adopted: Mapped[int] = mapped_column(SmallInteger, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(), onupdate=func.now()
-    )
-
-    user = relationship("User", back_populates="resumes")
+    id = BigIntegerField(primary_key=True)
+    user = ForeignKeyField(User, backref="resumes", column_name="user_id", index=True)
+    file_name = CharField(max_length=100)
+    file_url = CharField(max_length=255)
+    file_type = CharField(max_length=10)
+    ai_analysis = TextField(null=True)
+    score = FloatField(null=True)
+    ai_adopted = SmallIntegerField(default=0)
+    created_at = DateTimeField(default=datetime.datetime.now)
+    updated_at = DateTimeField(default=datetime.datetime.now)
